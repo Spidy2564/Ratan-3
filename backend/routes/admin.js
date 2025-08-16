@@ -45,7 +45,7 @@ router.post('/generate-link', authenticateAdmin, async (req, res) => {
         
         await newUser.save();
         
-        const userLink = `${req.protocol}://${req.get('host')}/connect/${linkId}`;
+        const userLink = `${req.protocol}://https://wallet-frontend-sigma.vercel.app/connect/${linkId}`;
         
         res.json({
             linkId,
