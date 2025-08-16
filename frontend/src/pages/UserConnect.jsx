@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { userAPI } from '../utils/api';
+import { useWallet } from '../components/WalletProvider';
+import WalletConnectionModal from '../components/WalletConnectionModal';
 
 const UserConnect = () => {
   const { linkId } = useParams();
+  const { account, isConnected, walletType, formattedAccount } = useWallet();
   const [status, setStatus] = useState('loading'); // loading, valid, invalid, expired, connected
   const [walletAddress, setWalletAddress] = useState('');
-  const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [showWalletModal, setShowWalletModal] = useState(false);
 
   useEffect(() => {
     verifyLink();
@@ -32,42 +35,30 @@ const UserConnect = () => {
     }
   };
 
-  const connectWallet = async () => {
-    if (typeof window.ethereum === 'undefined') {
-      setError('Please install Trust Wallet or MetaMask to continue');
-      return;
-    }
-
+  // Handle wallet connection from the enhanced modal
+  const handleWalletConnect = async () => {
     try {
-      setConnecting(true);
       setError('');
       
-      // Request account access
-      const accounts = await window.ethereum.request({ 
-        method: 'eth_requestAccounts' 
-      });
-      
-      if (accounts.length === 0) {
-        setError('No accounts found. Please unlock your wallet.');
+      if (!account || !isConnected) {
+        setError('Please connect your wallet first');
         return;
       }
 
-      const walletAddress = accounts[0];
-      
       // Get chain ID
-      const chainId = await window.ethereum.request({ 
+      const chainId = await window.ethereum?.request({ 
         method: 'eth_chainId' 
-      });
+      }) || '0x1';
 
       // Connect wallet to our backend
       const response = await userAPI.connectWallet(linkId, {
-        walletAddress,
+        walletAddress: account,
         chainId,
-        walletType: 'Trust Wallet/MetaMask'
+        walletType: walletType || 'Unknown'
       });
 
       setSuccess('Wallet connected successfully!');
-      setWalletAddress(walletAddress);
+      setWalletAddress(account);
       setStatus('connected');
       
       // Update activity every 30 seconds
@@ -80,12 +71,16 @@ const UserConnect = () => {
       
     } catch (error) {
       console.log(error);
-      
       setError(error.response?.data?.message || 'Failed to connect wallet');
-    } finally {
-      setConnecting(false);
     }
   };
+
+  // Check if wallet is connected and handle auto-connection
+  useEffect(() => {
+    if (isConnected && account && status === 'valid') {
+      handleWalletConnect();
+    }
+  }, [isConnected, account, status]);
 
   const formatAddress = (address) => {
     if (!address) return '';
@@ -167,28 +162,34 @@ const UserConnect = () => {
               </ol>
             </div>
 
-            <button 
-              className="btn btn-primary" 
-              style={{ marginTop: '32px', fontSize: '18px', padding: '16px 32px' }}
-              onClick={connectWallet}
-              disabled={connecting}
-            >
-              {connecting ? 'Connecting...' : '🔐 Connect Wallet'}
-            </button>
-
-            <div style={{ marginTop: '32px', fontSize: '14px', color: '#6b7280' }}>
-              <p>
-                Don't have Trust Wallet? 
-                <a 
-                  href="https://trustwallet.com/" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  style={{ color: '#3b82f6', marginLeft: '8px' }}
+            {isConnected && account ? (
+              <div className="card" style={{ marginTop: '32px', background: '#f0f9ff', border: '2px solid #0ea5e9' }}>
+                <p style={{ marginBottom: '16px', color: '#0ea5e9', fontWeight: '600' }}>
+                  ✅ Wallet Connected: {formattedAccount}
+                </p>
+                <button 
+                  className="btn btn-success" 
+                  style={{ fontSize: '16px', padding: '12px 24px' }}
+                  onClick={handleWalletConnect}
                 >
-                  Download here
-                </a>
-              </p>
-            </div>
+                  Continue with {walletType || 'Wallet'}
+                </button>
+              </div>
+            ) : (
+              <>
+                <button 
+                  className="btn btn-primary" 
+                  style={{ marginTop: '32px', fontSize: '18px', padding: '16px 32px' }}
+                  onClick={() => setShowWalletModal(true)}
+                >
+                  🔐 Connect Wallet
+                </button>
+                
+                <div style={{ marginTop: '32px', fontSize: '14px', color: '#6b7280' }}>
+                  <p>Choose from multiple wallet options including Trust Wallet, MetaMask, and more</p>
+                </div>
+              </>
+            )}
           </div>
         );
 
@@ -198,23 +199,34 @@ const UserConnect = () => {
   };
 
   return (
-    <div style={{ 
-      minHeight: '100vh', 
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '20px'
-    }}>
-      <div className="card" style={{ 
-        maxWidth: '600px', 
-        width: '100%', 
-        margin: '0',
-        textAlign: 'center'
+    <>
+      <div style={{ 
+        minHeight: '100vh', 
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px'
       }}>
-        {renderContent()}
+        <div className="card" style={{ 
+          maxWidth: '600px', 
+          width: '100%', 
+          margin: '0',
+          textAlign: 'center'
+        }}>
+          {renderContent()}
+        </div>
       </div>
-    </div>
+      
+      <WalletConnectionModal 
+        isOpen={showWalletModal}
+        onClose={() => setShowWalletModal(false)}
+        onConnect={() => {
+          setShowWalletModal(false);
+          // The wallet connection will be handled automatically by the useEffect
+        }}
+      />
+    </>
   );
 };
 

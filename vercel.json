@@ -1,0 +1,12 @@
+{
+  "projects": [
+    {
+      "name": "trust-wallet-admin-frontend",
+      "root": "frontend"
+    },
+    {
+      "name": "trust-wallet-admin-backend",
+      "root": "backend"
+    }
+  ]
+}
