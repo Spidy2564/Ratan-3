@@ -126,7 +126,7 @@ const AdminLogin = () => {
   const testBackendConnection = async () => {
     try {
       setDebugInfo('Testing backend connection...');
-      const response = await fetch('http://localhost:5000/');
+      const response = await fetch('https://wallet-backend-nu.vercel.app');
       const data = await response.json();
       setDebugInfo(`Backend is reachable: ${data.message}`);
     } catch (error) {

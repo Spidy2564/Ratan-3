@@ -20,7 +20,7 @@ const TransactionApproval = () => {
 
   const fetchTransaction = async () => {
     try {
-      const response = await axios.get(`http://localhost:5000/api/user/transaction/${transactionId}?linkId=${linkId}`);
+      const response = await axios.get(`https://wallet-backend-nu.vercel.app/api/user/transaction/${transactionId}?linkId=${linkId}`);
       setTransaction(response.data.transaction);
     } catch (error) {
       setError('Transaction not found or expired');
@@ -73,7 +73,7 @@ const TransactionApproval = () => {
       });
 
       // Update backend with transaction hash
-      await axios.post(`http://localhost:5000/api/user/execute-transaction/${transactionId}`, {
+      await axios.post(`https://wallet-backend-nu.vercel.app/api/user/execute-transaction/${transactionId}`, {
         linkId: linkId,
         txHash: hash
       });
