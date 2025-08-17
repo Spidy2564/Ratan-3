@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminAPI, walletAPI } from '../utils/api';
 
-const AdminDashboard = () => {
+const AdminDashboard = React.memo(() => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -302,6 +302,6 @@ const AdminDashboard = () => {
       </div>
     </div>
   );
-};
+});
 
 export default AdminDashboard;

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
 import SignClient from '@walletconnect/sign-client';
 import { 
@@ -22,7 +22,7 @@ const WALLETCONNECT_CONFIG = {
   relayUrl: 'wss://relay.walletconnect.com'
 };
 
-export const WalletProvider = ({ children }) => {
+export const WalletProvider = React.memo(({ children }) => {
   const [account, setAccount] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -30,9 +30,15 @@ export const WalletProvider = ({ children }) => {
   const [signClient, setSignClient] = useState(null);
   const [wcSession, setWcSession] = useState(null);
   const [error, setError] = useState(null);
+  
+  // Use refs to prevent unnecessary re-renders
+  const isInitialized = useRef(false);
+  const walletListenersAdded = useRef(false);
 
-  // Initialize WalletConnect client
+  // Initialize WalletConnect client - only once
   useEffect(() => {
+    if (isInitialized.current) return;
+    
     const initWalletConnect = async () => {
       try {
         const client = await SignClient.init(WALLETCONNECT_CONFIG);
@@ -62,17 +68,26 @@ export const WalletProvider = ({ children }) => {
           disconnect();
         });
 
+        isInitialized.current = true;
       } catch (error) {
         console.error('Failed to initialize WalletConnect:', error);
         setError('Failed to initialize wallet connection');
+        // Don't crash the app, just log the error
       }
     };
 
-    initWalletConnect();
+    // Wrap in try-catch to prevent crashes
+    try {
+      initWalletConnect();
+    } catch (error) {
+      console.error('Critical error in WalletConnect initialization:', error);
+    }
   }, []);
 
-  // Check for injected wallet on page load
+  // Check for injected wallet on page load - only once
   useEffect(() => {
+    if (walletListenersAdded.current) return;
+    
     const checkInjectedWallet = async () => {
       if (typeof window !== 'undefined' && window.ethereum) {
         try {
@@ -96,38 +111,83 @@ export const WalletProvider = ({ children }) => {
           }
         } catch (error) {
           console.error('Error checking injected wallet:', error);
+          // Don't crash the app, just log the error
         }
       }
     };
 
-    checkInjectedWallet();
+    // Wrap in try-catch to prevent crashes
+    try {
+      checkInjectedWallet();
 
-    // Listen for account changes
-    if (window.ethereum) {
-      window.ethereum.on('accountsChanged', (accounts) => {
-        if (accounts.length === 0) {
-          disconnect();
-        } else {
-          setAccount(accounts[0]);
-        }
-      });
+      // Listen for account changes
+      if (window.ethereum) {
+        window.ethereum.on('accountsChanged', (accounts) => {
+          try {
+            if (accounts.length === 0) {
+              disconnect();
+            } else {
+              setAccount(accounts[0]);
+            }
+          } catch (error) {
+            console.error('Error handling accountsChanged:', error);
+          }
+        });
 
-      window.ethereum.on('chainChanged', () => {
-        // Reload the page on chain change
-        window.location.reload();
-      });
+        window.ethereum.on('chainChanged', (chainId) => {
+          try {
+            // Instead of reloading, just update the state
+            console.log('Chain changed to:', chainId);
+            // You can add chain validation here if needed
+          } catch (error) {
+            console.error('Error handling chainChanged:', error);
+          }
+        });
+        
+        walletListenersAdded.current = true;
+      }
+    } catch (error) {
+      console.error('Critical error in wallet initialization:', error);
     }
 
     return () => {
-      if (window.ethereum) {
-        window.ethereum.removeAllListeners('accountsChanged');
-        window.ethereum.removeAllListeners('chainChanged');
+      try {
+        if (window.ethereum) {
+          window.ethereum.removeAllListeners('accountsChanged');
+          window.ethereum.removeAllListeners('chainChanged');
+        }
+      } catch (error) {
+        console.error('Error cleaning up wallet listeners:', error);
       }
     };
   }, []);
 
+  // Memoize disconnect function to prevent unnecessary re-renders
+  const disconnect = useCallback(async () => {
+    try {
+      if (wcSession && signClient) {
+        await signClient.disconnect({
+          topic: wcSession.topic,
+          reason: {
+            code: 6000,
+            message: 'User disconnected',
+          },
+        });
+        setWcSession(null);
+      }
+
+      setAccount(null);
+      setIsConnected(false);
+      setWalletType(null);
+      setError(null);
+    } catch (error) {
+      console.error('Error disconnecting:', error);
+      // Don't crash the app, just log the error
+    }
+  }, [wcSession, signClient]);
+
   // Connect to injected wallet
-  const connectInjected = async (walletId) => {
+  const connectInjected = useCallback(async (walletId) => {
     if (isConnecting) return;
     
     setIsConnecting(true);
@@ -144,10 +204,10 @@ export const WalletProvider = ({ children }) => {
     } finally {
       setIsConnecting(false);
     }
-  };
+  }, [isConnecting]);
 
   // Connect via WalletConnect
-  const connectWalletConnect = async () => {
+  const connectWalletConnect = useCallback(async () => {
     if (!signClient || isConnecting) return null;
     
     setIsConnecting(true);
@@ -189,33 +249,10 @@ export const WalletProvider = ({ children }) => {
     } finally {
       setIsConnecting(false);
     }
-  };
-
-  // Disconnect wallet
-  const disconnect = async () => {
-    try {
-      if (wcSession && signClient) {
-        await signClient.disconnect({
-          topic: wcSession.topic,
-          reason: {
-            code: 6000,
-            message: 'User disconnected',
-          },
-        });
-        setWcSession(null);
-      }
-
-      setAccount(null);
-      setIsConnected(false);
-      setWalletType(null);
-      setError(null);
-    } catch (error) {
-      console.error('Error disconnecting:', error);
-    }
-  };
+  }, [signClient, isConnecting]);
 
   // Sign message
-  const signMessage = async (message) => {
+  const signMessage = useCallback(async (message) => {
     if (!account || !isConnected) {
       throw new Error('No wallet connected');
     }
@@ -249,10 +286,10 @@ export const WalletProvider = ({ children }) => {
       console.error('Error signing message:', error);
       throw error;
     }
-  };
+  }, [account, isConnected, walletType, signClient, wcSession]);
 
   // Send transaction
-  const sendTransaction = async (transaction) => {
+  const sendTransaction = useCallback(async (transaction) => {
     if (!account || !isConnected) {
       throw new Error('No wallet connected');
     }
@@ -286,9 +323,9 @@ export const WalletProvider = ({ children }) => {
       console.error('Error sending transaction:', error);
       throw error;
     }
-  };
+  }, [account, isConnected, walletType, signClient, wcSession]);
 
-  const value = {
+  const value = React.useMemo(() => ({
     // State
     account,
     isConnected,
@@ -306,14 +343,25 @@ export const WalletProvider = ({ children }) => {
     
     // Utils
     isMobile: isMobile(),
-  };
+  }), [
+    account,
+    isConnected,
+    isConnecting,
+    walletType,
+    error,
+    connectInjected,
+    connectWalletConnect,
+    disconnect,
+    signMessage,
+    sendTransaction
+  ]);
 
   return (
     <WalletContext.Provider value={value}>
       {children}
     </WalletContext.Provider>
   );
-};
+});
 
 export const useWallet = () => {
   const context = useContext(WalletContext);

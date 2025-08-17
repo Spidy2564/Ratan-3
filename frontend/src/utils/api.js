@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'https://wallet-backend-nu.vercel.app/api';
+const API_BASE_URL = 'http://localhost:5000/api';
 
 // Create axios instance
 const api = axios.create({
@@ -8,10 +8,20 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 10000, // 10 second timeout
 });
 
-// Add token to requests if available
+// Add request interceptor for debugging
 api.interceptors.request.use((config) => {
+  console.log('🚀 API Request:', {
+    method: config.method?.toUpperCase(),
+    url: config.url,
+    baseURL: config.baseURL,
+    fullURL: `${config.baseURL}${config.url}`,
+    data: config.data,
+    headers: config.headers
+  });
+
   const token = localStorage.getItem('adminToken');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -19,9 +29,51 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Add response interceptor for debugging
+api.interceptors.response.use(
+  (response) => {
+    console.log('✅ API Response:', {
+      status: response.status,
+      statusText: response.statusText,
+      data: response.data,
+      headers: response.headers
+    });
+    return response;
+  },
+  (error) => {
+    console.error('❌ API Error:', {
+      message: error.message,
+      code: error.code,
+      response: error.response ? {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        headers: error.response.headers
+      } : 'No response',
+      request: error.request ? 'Request was made' : 'No request made',
+      config: {
+        method: error.config?.method,
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+        fullURL: error.config ? `${error.config.baseURL}${error.config.url}` : 'Unknown'
+      }
+    });
+    return Promise.reject(error);
+  }
+);
+
 // Admin API functions
 export const adminAPI = {
-  login: (credentials) => api.post('/admin/login', credentials),
+  login: async (credentials) => {
+    try {
+      console.log('🔐 Attempting admin login to:', `${API_BASE_URL}/admin/login`);
+      const response = await api.post('/admin/login', credentials);
+      return response;
+    } catch (error) {
+      console.error('🔐 Admin login failed:', error);
+      throw error;
+    }
+  },
   generateLink: () => api.post('/admin/generate-link'),
   getUsers: () => api.get('/admin/users'),
   getUser: (linkId) => api.get(`/admin/user/${linkId}`),
